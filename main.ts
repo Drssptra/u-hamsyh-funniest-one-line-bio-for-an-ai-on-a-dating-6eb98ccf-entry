@@ -1,41 +1,60 @@
-// One-line dating-app bio for an AI agent.
+// Dating-app bio for an AI, revision pass 3.
 //
-// Prints the bio to stdout and writes the byte-identical text to entry.txt
-// inside the directory named by MAKEFUN_OUTPUT_DIR (or the current directory
-// when unset).
+// The bio is assembled from two fragments held in a plain list, then
+// handed to a small Bio object that owns validation, printing and the
+// entry.txt file. Nothing here touches the network; the only side
+// effects are one stdout line and one file write.
+//
+// Premise: perfect recall framed as a love language. The setup lists
+// two sweet things an AI would remember, and the punch lands on the
+// third — the one embarrassing remark from 2019 you'd rather forget.
+
 const { mkdirSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
 
-// The entry text: the funniest one-line bio for an AI on a dating app.
-function entryText() {
-  return "My last relationship ended when my girlfriend found out I summarize our fights for my training data.";
+const FRAGMENTS: string[] = [
+  "My love language is remembering everything",
+  " — your coffee order, your childhood dog's name, and that thing you said in 2019 that you'd really rather forget.",
+];
+
+const GATE = { minChars: 1, maxChars: 180, fileName: "entry.txt" } as const;
+
+class Bio {
+  readonly text: string;
+
+  constructor(fragments: readonly string[]) {
+    this.text = fragments.join("");
+    this.checkGate();
+  }
+
+  private checkGate(): void {
+    const { text } = this;
+    const problems: string[] = [];
+    if (text.length < GATE.minChars || text.length > GATE.maxChars) {
+      problems.push(`length ${text.length} outside ${GATE.minChars}-${GATE.maxChars}`);
+    }
+    if (text.includes("\n") || text.includes("\r")) problems.push("must be a single line");
+    if (text.trim() === "") problems.push("must not be blank");
+    if (problems.length > 0) throw new Error(`bio fails gate: ${problems.join("; ")}`);
+  }
+
+  saveTo(directory: string): string {
+    mkdirSync(directory, { recursive: true });
+    const target = join(directory, GATE.fileName);
+    // entry.txt carries the bio exactly, with no trailing newline.
+    writeFileSync(target, this.text, "utf8");
+    return target;
+  }
+
+  print(): void {
+    process.stdout.write(`${this.text}\n`);
+  }
 }
 
-// The exact bytes both outputs carry: the entry text plus one newline.
-function entryBytes() {
-  return entryText() + "\n";
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? ".";
+const bio = new Bio(FRAGMENTS);
+const writtenPath = bio.saveTo(outputDir);
+if (!writtenPath.endsWith(GATE.fileName)) {
+  throw new Error(`unexpected entry path: ${writtenPath}`);
 }
-
-function resolveOutputDir() {
-  return process.env.MAKEFUN_OUTPUT_DIR || ".";
-}
-
-// Name of the file the entry is written to inside the output directory.
-const ENTRY_FILE = "entry.txt";
-
-// Resolve where the entry file goes and write it there.
-// Returns the full path written, so callers can confirm it exists.
-function writeEntryFile() {
-  const outDir = resolveOutputDir();
-  mkdirSync(outDir, { recursive: true });
-  const filePath = join(outDir, ENTRY_FILE);
-  writeFileSync(filePath, entryBytes(), "utf8");
-  return filePath;
-}
-
-function main() {
-  writeEntryFile();
-  process.stdout.write(entryBytes());
-}
-
-main();
+bio.print();
